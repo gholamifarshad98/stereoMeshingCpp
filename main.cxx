@@ -4,8 +4,10 @@
 #include<math.h>
 #include<vector>
 #include<memory>
+#include <chrono> 
 using namespace cv;
 using namespace std;
+using namespace std::chrono;
 struct pixel
 {
 	int row;
@@ -14,9 +16,9 @@ struct pixel
 };
 int numOfColumns;
 int numOfRows;
-int thickness = 20;
-int maxDisparity = 30;
-int kernelSize = 15; // kernel size must be odd number.
+int thickness = 60;
+int maxDisparity = 24;
+int kernelSize = 3; // kernel size must be odd number.
 typedef vector<pixel> layerVector;
 vector<layerVector> layers;
 void ReadBothImages(shared_ptr<Mat>, shared_ptr<Mat>);
@@ -36,14 +38,24 @@ int main()
 	numOfColumns = leftImage->cols;
 	Meshing(numOfRows, numOfColumns, thickness, kernelSize, maxDisparity);
 
-
-	for (int i =0; i < layers.size(); i++) {
-		stereo(leftImage, rightImage, &layers[i], kernelSize, maxDisparity);
+	//auto start = chrono::high_resolution_clock::now();
+	for (int i =6; i < layers.size(); i++) {
+		stereo(leftImage, rightImage, &layers[i], kernelSize, maxDisparity);	
 	}
+
+	for (int i = 0; i < layers[6].size(); i++) {
+		//cout << "test000000000000000000000000000000000000000" << endl;
+		if (layers[6][i].column >= numOfColumns-maxDisparity-int(kernelSize/2) || layers[6][i].row > numOfRows - int(kernelSize / 2) - 1) {
+			cout << layers[6][i].column << "  " << layers[6][i].row << endl;
+		}
+	}
+
+	//auto stop = high_resolution_clock::now();
 	makeResult(layers, numOfRows, numOfColumns);
-
-
-	cout << layers.size() << endl;
+	//auto duration = duration_cast<milliseconds>(stop - start);
+	//cout << "Time taken by function: "
+	//	<< duration.count() << " milliseconds" << endl;
+	//cout << layers.size() << endl;
 	cout << "hello" << endl;
 	int x;
 	cin >> x;// Show our image inside it.
@@ -57,10 +69,10 @@ int main()
 void ReadBothImages(shared_ptr<Mat> leftImage, shared_ptr<Mat> rightImage) {
 
 	try {
-		*rightImage = imread("view1.png", CV_LOAD_IMAGE_GRAYSCALE);   // Read the right image
+		*rightImage = imread("000075_11.png", CV_LOAD_IMAGE_GRAYSCALE);   // Read the right image
 		//rightImage->convertTo(*rightImage, CV_64F);
 		*rightImage = *rightImage;
-		*leftImage = imread("view0.png", CV_LOAD_IMAGE_GRAYSCALE);   // Read the left image
+		*leftImage = imread("000075_10.png", CV_LOAD_IMAGE_GRAYSCALE);   // Read the left image
 		//leftImage->convertTo(*leftImage, CV_64F);
 		*leftImage = *leftImage;
 		if (!rightImage->data)                             // Check for invalid input
@@ -122,6 +134,9 @@ double CalcDistance(int numOfRows, int numOfColumns, int row, int column) {
 /// In this part we clac disparity of each pixel.
 ////////////////////////////////////////////////////////////////////
 void stereo(shared_ptr<Mat> leftImage, shared_ptr<Mat> rightImage, layerVector* layer, int kernelSize, int maxDisparity) {
+	imshow("leftImage", *leftImage);
+	imshow("rightImage", *rightImage);
+	waitKey(12);
 	for (int p = 0; p < layer->size(); p++) {
 		//cout << "the alye size is " << layer->size() << endl;
 		//cout << "disparity is  " << p << endl;
@@ -151,6 +166,9 @@ int CalcCost(shared_ptr<Mat> leftImage, shared_ptr<Mat> rightImage, int row, int
 			int temp2 = column + v;
 			int temp3 = row + u + disparity;
 			int temp4 = column + v;
+			if (column + u + disparity > numOfColumns) {
+				cout << "*****************************************************" << endl;
+			}
 			cost = cost + int(pow((leftImage->at<uchar>(row + v, column + u) - (rightImage->at<uchar>(row + v , column + u+ disparity))),2));
 		}
 	}
