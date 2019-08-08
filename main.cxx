@@ -5,6 +5,7 @@
 #include<vector>
 #include<memory>
 #include <chrono> 
+#include <string> 
 using namespace cv;
 using namespace std;
 using namespace std::chrono;
@@ -17,16 +18,16 @@ struct pixel
 int numOfColumns;
 int numOfRows;
 int thickness = 60;
-int maxDisparity = 24;
-int kernelSize = 3; // kernel size must be odd number.
-typedef vector<pixel> layerVector;
+int maxDisparity = 30;
+int maxkernelSize = 35; // kernel size must be odd number.
+typedef vector<pixel*> layerVector;
 vector<layerVector> layers;
 void ReadBothImages(shared_ptr<Mat>, shared_ptr<Mat>);
 void Meshing(int, int, int, int, int);
 double CalcDistance(int, int, int, int);
 int CalcCost(shared_ptr<Mat>, shared_ptr<Mat>, int, int, int, int);
 void stereo(shared_ptr<Mat>, shared_ptr<Mat>, layerVector*, int, int);
-void makeResult(vector<layerVector>, int, int);
+void makeResult(vector<layerVector>, int, int,int, string);
 
 int main()
 {
@@ -36,30 +37,35 @@ int main()
 	ReadBothImages(leftImage, rightImage);
 	numOfRows = leftImage->rows;
 	numOfColumns = leftImage->cols;
-	Meshing(numOfRows, numOfColumns, thickness, kernelSize, maxDisparity);
+	Meshing(numOfRows, numOfColumns, thickness, maxkernelSize, maxDisparity);
+	for (int kernelSize = 3; kernelSize < maxkernelSize; kernelSize = kernelSize + 2) {
+		auto start = chrono::high_resolution_clock::now();
 
-	//auto start = chrono::high_resolution_clock::now();
-	for (int i =6; i < layers.size(); i++) {
-		stereo(leftImage, rightImage, &layers[i], kernelSize, maxDisparity);	
-	}
-
-	for (int i = 0; i < layers[6].size(); i++) {
-		//cout << "test000000000000000000000000000000000000000" << endl;
-		if (layers[6][i].column >= numOfColumns-maxDisparity-int(kernelSize/2) || layers[6][i].row > numOfRows - int(kernelSize / 2) - 1) {
-			cout << layers[6][i].column << "  " << layers[6][i].row << endl;
+		try
+		{
+			for (int i = 0; i < layers.size(); i++) {
+				stereo(leftImage, rightImage, &layers[i], kernelSize, maxDisparity);
+			}
 		}
+		catch (cv::Exception & e)
+		{
+			cerr << e.msg << endl; // output exception message
+		}
+
+
+		chrono::high_resolution_clock::time_point stop = high_resolution_clock::now();
+		auto duration = duration_cast<seconds>(stop - start);
+		auto value = duration.count();
+		string duration_s=to_string(value);
+		
+		makeResult(layers, numOfRows, numOfColumns, kernelSize, duration_s);
 	}
 
-	//auto stop = high_resolution_clock::now();
-	makeResult(layers, numOfRows, numOfColumns);
-	//auto duration = duration_cast<milliseconds>(stop - start);
-	//cout << "Time taken by function: "
-	//	<< duration.count() << " milliseconds" << endl;
-	//cout << layers.size() << endl;
+	cout << layers.size() << endl;
 	cout << "hello" << endl;
 	int x;
 	cin >> x;// Show our image inside it.
-                                        // Wait for a keystroke in the window
+			 // Wait for a keystroke in the window
 	return 0;
 }
 
@@ -69,10 +75,10 @@ int main()
 void ReadBothImages(shared_ptr<Mat> leftImage, shared_ptr<Mat> rightImage) {
 
 	try {
-		*rightImage = imread("000075_11.png", CV_LOAD_IMAGE_GRAYSCALE);   // Read the right image
+		*rightImage = imread("000147_11.png", CV_LOAD_IMAGE_GRAYSCALE);   // Read the right image
 		//rightImage->convertTo(*rightImage, CV_64F);
 		*rightImage = *rightImage;
-		*leftImage = imread("000075_10.png", CV_LOAD_IMAGE_GRAYSCALE);   // Read the left image
+		*leftImage = imread("000147_10.png", CV_LOAD_IMAGE_GRAYSCALE);   // Read the left image
 		//leftImage->convertTo(*leftImage, CV_64F);
 		*leftImage = *leftImage;
 		if (!rightImage->data)                             // Check for invalid input
@@ -99,16 +105,17 @@ void ReadBothImages(shared_ptr<Mat> leftImage, shared_ptr<Mat> rightImage) {
 void Meshing(int numOfRows, int numOfColumns, int thickness, int kernelSize, int maxDisparity) {
 	int tempLayer = 0;
 	int numOfLayers =int( CalcDistance(numOfRows, numOfColumns, 0, 0) / thickness);
+	// the number 4 thai wrote there is for ensure that all of the image has suported... dont wworry... we have delete those who is null.
 	for (int i = 1; i <= numOfLayers+4; i++) {
 		layerVector tempLayer;
 		layers.push_back(tempLayer);
 	}
-	for (int i = (kernelSize/2); i <= numOfRows-(kernelSize/2) ; i++) {
-		for (int j = (kernelSize / 2); j <= numOfColumns-(kernelSize / 2)-maxDisparity; j++) {
+	for (int i = (kernelSize/2); i < numOfRows-(kernelSize/2) ; i++) {
+		for (int j = (kernelSize / 2); j < numOfColumns-(kernelSize / 2)-maxDisparity; j++) {
 			tempLayer=int(CalcDistance(numOfRows, numOfColumns, i, j)/ thickness);
-			pixel tempLocation;
-			tempLocation.row = i;
-			tempLocation.column = j;
+			pixel* tempLocation = new pixel;
+			tempLocation->row = i;
+			tempLocation->column = j;
 			layers.at(tempLayer).push_back(tempLocation);
 		}
 	}
@@ -137,20 +144,22 @@ void stereo(shared_ptr<Mat> leftImage, shared_ptr<Mat> rightImage, layerVector* 
 	imshow("leftImage", *leftImage);
 	imshow("rightImage", *rightImage);
 	waitKey(12);
-	for (int p = 0; p < layer->size(); p++) {
+	int tempCost = 0;
+	int tempDisparity = 0;
+	for (int p = 1; p < layer->size(); p++) {
 		//cout << "the alye size is " << layer->size() << endl;
 		//cout << "disparity is  " << p << endl;
-		double cost = 1000000000000000000;
-		int tempCost = 0;
-		int tempDisparity = 0;
+		double cost = 10000000;
+	    tempCost = 0;
+		tempDisparity = 0;
 		for (int i = 0; i < maxDisparity; i++) {
-			tempCost= CalcCost(leftImage, rightImage, (*layer)[p].row, (*layer)[p].column, kernelSize, i);
+			tempCost= CalcCost(leftImage, rightImage, (*layer)[p]->row, (*layer)[p]->column, kernelSize, i);
 			if (tempCost < cost) {
 				cost = tempCost;
 				tempDisparity = i;
 			}
 		}
-		(*layer)[p].disparity = tempDisparity;
+		(*layer)[p]->disparity = tempDisparity;
 	}
 }
 
@@ -160,12 +169,13 @@ void stereo(shared_ptr<Mat> leftImage, shared_ptr<Mat> rightImage, layerVector* 
 ////////////////////////////////////////////////////////////////////
 int CalcCost(shared_ptr<Mat> leftImage, shared_ptr<Mat> rightImage, int row, int column, int kernelSize, int disparity) {
 	int cost=0;
-	for (int u = -int(kernelSize / 2); u <= int(kernelSize/2); u++) {
+	for (int u = -int(kernelSize / 2); u <= int(kernelSize / 2); u++) {
 		for (int v = -int(kernelSize / 2); v <= int(kernelSize / 2); v++) {
 			int temp1 = row + u;
 			int temp2 = column + v;
 			int temp3 = row + u + disparity;
 			int temp4 = column + v;
+			// for error handeling.
 			if (column + u + disparity > numOfColumns) {
 				cout << "*****************************************************" << endl;
 			}
@@ -179,13 +189,16 @@ int CalcCost(shared_ptr<Mat> leftImage, shared_ptr<Mat> rightImage, int row, int
 ////////////////////////////////////////////////////////////////////
 /// In this part we can make the result.
 ////////////////////////////////////////////////////////////////////
-void makeResult(vector<layerVector> layers, int numOfRows, int numOfColumns) {
+void makeResult(vector<layerVector> layers, int numOfRows, int numOfColumns,int kernalSize, string Dutime) {
 	Mat result(numOfRows, numOfColumns, CV_8UC1);
 	for (int i = 0; i < layers.size(); i++) {
 		for (int j = 0; j < layers[i].size(); j++) {
-			result.at<uchar>(layers[i][j].row, layers[i][j].column) = uchar(255*layers[i][j].disparity/30);
+			result.at<uchar>(layers[i][j]->row, layers[i][j]->column) = uchar(255*layers[i][j]->disparity/30);
 		}
 
 	}
-	imwrite("result.png", result);
+	string temp;
+	
+	temp = "result_KernelSize_" + to_string(kernalSize)+"_MaxDisparity_"+ to_string(maxDisparity)+"Time_"+Dutime +"s.png";
+	imwrite(temp, result);
 }
